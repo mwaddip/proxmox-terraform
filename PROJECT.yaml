@@ -1,0 +1,252 @@
+# Proxmox-Terraform Project Manifest
+# Machine-readable overview for integration and automation
+# Last updated: 2026-01-29
+
+name: proxmox-terraform
+version: "0.1.0"
+description: |
+  Terraform-based Proxmox VM automation with NFT web3 authentication.
+  Creates Debian 12 VMs from a cloud-init template that includes libpam-web3
+  for Ethereum wallet-based SSH login.
+
+# Primary entry points for integration
+entry_points:
+  create_vm:
+    script: scripts/vm-generator.py
+    description: Generate and optionally apply Terraform config for a new VM
+    required_args:
+      - name: vm_name
+        position: 1
+        description: Name for the VM (e.g., web-001)
+      - name: --owner-wallet
+        description: Ethereum wallet address to receive the access NFT
+    optional_args:
+      - name: --purpose
+        description: Description/purpose of the VM
+      - name: --cpu
+        type: int
+        default: 1
+        description: Number of CPU cores
+      - name: --memory
+        type: int
+        default: 512
+        description: Memory in MB
+      - name: --disk
+        type: int
+        default: 10
+        description: Disk size in GB
+      - name: --tags
+        type: list
+        description: Tags for the VM
+      - name: --expiry-days
+        type: int
+        default: 30
+        description: Days until VM expires
+      - name: --apply
+        type: flag
+        description: Run terraform apply after generating config
+      - name: --mock
+        type: flag
+        description: Use mock database for testing
+      - name: --skip-mint
+        type: flag
+        description: Skip NFT minting (for testing)
+      - name: --no-web3
+        type: flag
+        description: Disable web3 auth, use standard cloud-init
+      - name: --cloud-init
+        description: Cloud-init template name (default nft-auth when web3 enabled)
+    outputs:
+      - Generated .tf.json file path
+      - Allocated VMID
+      - Allocated IP address
+      - Reserved NFT token ID (if web3 enabled)
+    example: |
+      python3 scripts/vm-generator.py web-001 \
+        --owner-wallet 0x1234...abcd \
+        --purpose "production web server" \
+        --cpu 2 --memory 2048 \
+        --apply
+
+  destroy_expired_vms:
+    script: scripts/vm-gc.py
+    description: Garbage collect VMs past their expiry date
+    optional_args:
+      - name: --execute
+        type: flag
+        description: Actually destroy VMs (default is dry run)
+      - name: --grace-days
+        type: int
+        default: 0
+        description: Grace period after expiry before destruction
+      - name: --mock
+        type: flag
+        description: Use mock database for testing
+    example: |
+      python3 scripts/vm-gc.py --execute --grace-days 3
+
+  mint_nft:
+    script: scripts/mint_nft.py
+    description: Mint access credential NFT to a wallet
+    required_args:
+      - name: --owner-wallet
+        description: Wallet address to receive the NFT
+      - name: --machine-id
+        description: VM name/machine ID to encrypt into the NFT
+    optional_args:
+      - name: --dry-run
+        type: flag
+        description: Print command without executing
+    example: |
+      python3 scripts/mint_nft.py --owner-wallet 0x1234... --machine-id web-001
+
+  build_template:
+    script: scripts/build-template.sh
+    description: Build and deploy Debian 12 template with libpam-web3 to Proxmox
+    environment_vars:
+      - name: PROXMOX_HOST
+        default: root@ix
+        description: SSH target for Proxmox host
+      - name: TEMPLATE_VMID
+        default: "9001"
+        description: VMID for the template
+      - name: STORAGE
+        default: local-lvm
+        description: Proxmox storage for VM disks
+      - name: LIBPAM_WEB3_DEB
+        default: ~/projects/libpam-web3/packaging/libpam-web3_0.2.0_amd64.deb
+        description: Path to libpam-web3 .deb package
+    prerequisites:
+      - libguestfs-tools (virt-customize)
+      - SSH access to Proxmox host
+      - libpam-web3 .deb package
+    example: |
+      PROXMOX_HOST=root@pve ./scripts/build-template.sh
+
+# Python module API (for programmatic use)
+python_api:
+  vm_db:
+    module: scripts/vm_db.py
+    classes:
+      - name: VMDatabase
+        description: Production database with file locking (fcntl)
+        methods:
+          - allocate_vmid() -> int
+          - allocate_ip() -> Optional[str]
+          - register_vm(name, vmid, ip, owner, expiry_days, purpose) -> dict
+          - get_vm(name) -> Optional[dict]
+          - get_expired_vms(grace_days=0) -> list[dict]
+          - mark_destroyed(name) -> None
+          - reserve_nft_token_id(vm_name) -> int
+          - mark_nft_minted(token_id, owner_wallet) -> None
+          - mark_nft_failed(token_id) -> None
+      - name: MockVMDatabase
+        description: In-memory database backed by accounting/mock-db.json
+        methods: Same as VMDatabase
+    factory:
+      name: get_database
+      signature: get_database(use_mock=False) -> VMDatabaseBase
+      description: Returns MockVMDatabase if use_mock=True, else VMDatabase
+
+  mint_nft:
+    module: scripts/mint_nft.py
+    functions:
+      - name: mint_nft
+        signature: mint_nft(owner_wallet, machine_id, config=None, dry_run=False) -> Optional[str]
+        description: Mint access NFT, returns transaction hash
+        requires:
+          - Foundry (cast CLI)
+          - pam_web3_tool for ECIES encryption
+          - Deployer private key with funds
+
+# Configuration files
+config_files:
+  db_config:
+    path: config/db.yaml
+    description: Database and resource allocation settings
+    key_settings:
+      - terraform_dir: Directory where .tf.json files are written
+      - db_file: Production database file path
+      - ip_pool: IP address allocation range
+      - vmid_range: VMID allocation range
+      - default_expiry_days: Default VM expiry
+
+  web3_config:
+    path: config/web3-defaults.yaml
+    description: Blockchain and NFT authentication settings
+    key_settings:
+      - blockchain.chain_id: Ethereum chain ID
+      - blockchain.nft_contract: NFT contract address
+      - blockchain.rpc_url: JSON-RPC endpoint
+      - deployer.private_key_file: Path to deployer key
+      - server.public_key: Server ECIES public key
+
+# Cloud-init templates
+cloud_init_templates:
+  - name: nft-auth
+    path: cloud-init/templates/nft-auth.yaml
+    description: NFT authentication with web3-auth-svc and signing page
+    variables:
+      - VM_NAME
+      - VM_IP
+      - USERNAME
+      - NFT_TOKEN_ID
+      - CHAIN_ID
+      - NFT_CONTRACT
+      - RPC_URL
+      - OTP_LENGTH
+      - OTP_TTL
+      - SSH_KEYS
+
+  - name: webserver
+    path: cloud-init/templates/webserver.yaml
+    description: Basic webserver with nginx
+
+  - name: devbox
+    path: cloud-init/templates/devbox.yaml
+    description: Development environment with common tools
+
+# External dependencies
+dependencies:
+  system:
+    - terraform: ">=1.0"
+    - libguestfs-tools: For virt-customize
+    - foundry: For cast CLI (NFT minting)
+  python:
+    - pyyaml: YAML parsing
+  proxmox:
+    - provider: bpg/proxmox >=0.50.0
+    - template_vmid: 9001 (Debian 12 with libpam-web3)
+
+# Integration notes
+integration:
+  as_submodule:
+    recommended_path: infra/proxmox-terraform
+    setup_steps:
+      - Run build-template.sh to deploy template to Proxmox
+      - Configure config/web3-defaults.yaml with contract details
+      - Configure config/db.yaml with terraform_dir path
+      - Ensure SSH access to Proxmox host
+    usage: |
+      # From parent project
+      python3 infra/proxmox-terraform/scripts/vm-generator.py myvm \
+        --owner-wallet 0x... --apply
+
+  terraform_state:
+    location: Configured via terraform_dir in config/db.yaml
+    note: Generated .tf.json files are written to terraform_dir, not this repo
+
+# Data flow
+workflow:
+  vm_creation:
+    steps:
+      - 1: Reserve NFT token ID (db.reserve_nft_token_id)
+      - 2: Allocate VMID and IP (db.allocate_vmid, db.allocate_ip)
+      - 3: Render cloud-init template with variables
+      - 4: Generate .tf.json config
+      - 5: Run terraform apply (if --apply)
+      - 6: Mint NFT to owner wallet (if successful and not --skip-mint)
+      - 7: Mark NFT as minted in database
+    on_failure:
+      - Mark NFT token as failed (not minted, can't reuse ID)
+      - VM not created, resources released

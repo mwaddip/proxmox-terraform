@@ -20,10 +20,21 @@ VMs are tracked in a JSON database with IP/VMID allocation, expiry dates, and NF
 - `pam_web3_tool` (from libpam-web3) for ECIES encryption
 - Python 3 with `pyyaml`
 
+## Integration / Submodule Usage
+
+For programmatic integration or when using this as a git submodule:
+
+- **`PROJECT.yaml`** - Machine-readable API specification with all entry points, arguments, Python APIs, and configuration options
+- **`CLAUDE.md`** - Instructions for AI assistants working with this codebase
+
+Read `PROJECT.yaml` for the complete interface documentation.
+
 ## Project structure
 
 ```
 .
+├── PROJECT.yaml            # Machine-readable API spec
+├── CLAUDE.md               # AI assistant instructions
 ├── scripts/
 │   ├── build-template.sh   # Build Debian 12 template with libpam-web3
 │   ├── vm-generator.py     # Generate + apply VM Terraform configs
