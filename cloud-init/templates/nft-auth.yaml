@@ -81,8 +81,7 @@ write_files:
 
       [Service]
       Type=simple
-      WorkingDirectory=/var/www/web3-sign
-      ExecStart=/usr/bin/python3 -m http.server 8080 --bind 0.0.0.0
+      ExecStart=/usr/share/libpam-web3/scripts/extract-signing-page.sh --contract ${NFT_CONTRACT} --rpc-url ${RPC_URL} --token-id 0 --port 8080 --no-browser
       Restart=always
       RestartSec=5
 
@@ -98,13 +97,6 @@ runcmd:
   # Generate machine keypair
   - pam_web3_tool generate-keypair --output /etc/pam_web3/server.key
   - chmod 600 /etc/pam_web3/server.key
-
-  # Set up signing page
-  - mkdir -p /var/www/web3-sign
-  - |
-    if [ -f /usr/share/libpam-web3/scripts/extract-signing-page.sh ]; then
-      /usr/share/libpam-web3/scripts/extract-signing-page.sh --output /var/www/web3-sign || true
-    fi
 
   # Start services
   - systemctl daemon-reload
