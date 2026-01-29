@@ -1,0 +1,54 @@
+{
+  "variable": {
+    "proxmox_endpoint": {
+      "description": "Proxmox API endpoint URL",
+      "type": "string",
+      "default": "https://192.168.122.13:8006"
+    },
+    "proxmox_node": {
+      "description": "Proxmox node name",
+      "type": "string",
+      "default": "ix"
+    },
+    "template_vmid": {
+      "description": "VMID of the template to clone",
+      "type": "number",
+      "default": 9001
+    },
+    "default_storage": {
+      "description": "Default storage for VM disks",
+      "type": "string",
+      "default": "local-lvm"
+    },
+    "default_bridge": {
+      "description": "Default network bridge",
+      "type": "string",
+      "default": "vmbr0"
+    },
+    "default_cpu_cores": {
+      "description": "Default number of CPU cores",
+      "type": "number",
+      "default": 1
+    },
+    "default_memory_mb": {
+      "description": "Default memory in MB",
+      "type": "number",
+      "default": 512
+    },
+    "default_disk_gb": {
+      "description": "Default disk size in GB",
+      "type": "number",
+      "default": 10
+    },
+    "default_username": {
+      "description": "Default username for cloud-init",
+      "type": "string",
+      "default": "admin"
+    },
+    "gateway": {
+      "description": "Default gateway IP",
+      "type": "string",
+      "default": "192.168.122.1"
+    }
+  }
+}

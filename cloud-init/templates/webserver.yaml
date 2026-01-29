@@ -1,0 +1,48 @@
+#cloud-config
+# Web Server Cloud-Init Template
+# Installs and configures nginx with basic firewall rules
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - nginx
+  - ufw
+  - curl
+  - vim
+
+runcmd:
+  # Configure firewall
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw --force enable
+
+  # Enable and start nginx
+  - systemctl enable nginx
+  - systemctl start nginx
+
+  # Create a simple index page
+  - |
+    cat > /var/www/html/index.html << 'EOF'
+    <!DOCTYPE html>
+    <html>
+    <head><title>Welcome</title></head>
+    <body>
+    <h1>Server is running</h1>
+    <p>Deployed via Proxmox Terraform automation</p>
+    </body>
+    </html>
+    EOF
+
+write_files:
+  - path: /etc/nginx/conf.d/security.conf
+    content: |
+      # Security headers
+      add_header X-Frame-Options "SAMEORIGIN" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header X-XSS-Protection "1; mode=block" always;
+
+final_message: "Web server setup complete after $UPTIME seconds"

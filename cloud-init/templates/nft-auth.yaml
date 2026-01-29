@@ -1,0 +1,115 @@
+#cloud-config
+# NFT Authentication Cloud-Init Template
+# Variables (substituted by vm-generator.py):
+#   ${VM_NAME}         - VM hostname
+#   ${VM_IP}           - Allocated IP address
+#   ${USERNAME}        - Linux username
+#   ${NFT_TOKEN_ID}    - Reserved NFT token ID
+#   ${CHAIN_ID}        - Blockchain chain ID
+#   ${NFT_CONTRACT}    - NFT contract address
+#   ${RPC_URL}         - JSON-RPC endpoint URL
+#   ${OTP_LENGTH}      - OTP code length
+#   ${OTP_TTL}         - OTP time-to-live in seconds
+
+users:
+  - name: ${USERNAME}
+    gecos: "nft=${NFT_TOKEN_ID}"
+    groups: sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys: ${SSH_KEYS}
+
+write_files:
+  - path: /etc/pam_web3/config.toml
+    permissions: '0640'
+    content: |
+      [machine]
+      id = "${VM_NAME}"
+      private_key_file = "/etc/pam_web3/server.key"
+
+      [auth]
+      mode = "nft"
+      nft_lookup = "passwd"
+      signing_url = "http://${VM_IP}:8080"
+      otp_length = ${OTP_LENGTH}
+      otp_ttl_seconds = ${OTP_TTL}
+
+      [blockchain]
+      socket_path = "/run/web3-auth/web3-auth.sock"
+      chain_id = ${CHAIN_ID}
+      nft_contract = "${NFT_CONTRACT}"
+      timeout_seconds = 10
+
+  - path: /etc/web3-auth/config.toml
+    permissions: '0640'
+    content: |
+      socket_path = "/run/web3-auth/web3-auth.sock"
+      backend = "jsonrpc"
+      default_chain_id = ${CHAIN_ID}
+      default_contract = "${NFT_CONTRACT}"
+
+      [jsonrpc]
+      rpc_url = "${RPC_URL}"
+      timeout_seconds = 30
+
+  - path: /etc/pam.d/sshd
+    content: |
+      # Web3 NFT authentication for all users
+      auth [success=done default=die] pam_web3.so
+
+      # Standard account/session management
+      account    required     pam_nologin.so
+      @include common-account
+      session [success=ok ignore=ignore module_unknown=ignore default=bad] pam_selinux.so close
+      session    required     pam_loginuid.so
+      session    optional     pam_keyinit.so force revoke
+      @include common-session
+      session    optional     pam_motd.so  motd=/run/motd.dynamic
+      session    optional     pam_motd.so noupdate
+      session    optional     pam_mail.so standard noenv
+      session    required     pam_limits.so
+      session    required     pam_env.so
+      session    required     pam_env.so user_readenv=1 envfile=/etc/default/locale
+      session [success=ok ignore=ignore module_unknown=ignore default=bad] pam_selinux.so open
+      @include common-password
+
+  - path: /etc/systemd/system/web3-sign.service
+    content: |
+      [Unit]
+      Description=Web3 Signing Page HTTP Server
+      After=network.target
+
+      [Service]
+      Type=simple
+      WorkingDirectory=/var/www/web3-sign
+      ExecStart=/usr/bin/python3 -m http.server 8080 --bind 0.0.0.0
+      Restart=always
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/ssh/sshd_config.d/web3-auth.conf
+    content: |
+      ChallengeResponseAuthentication yes
+      UsePAM yes
+
+runcmd:
+  # Generate machine keypair
+  - pam_web3_tool generate-keypair --output /etc/pam_web3/server.key
+  - chmod 600 /etc/pam_web3/server.key
+
+  # Set up signing page
+  - mkdir -p /var/www/web3-sign
+  - |
+    if [ -f /usr/share/libpam-web3/scripts/extract-signing-page.sh ]; then
+      /usr/share/libpam-web3/scripts/extract-signing-page.sh --output /var/www/web3-sign || true
+    fi
+
+  # Start services
+  - systemctl daemon-reload
+  - systemctl enable --now web3-auth-svc
+  - systemctl enable --now web3-sign
+  - systemctl restart sshd
+
+final_message: "Web3 NFT authentication configured after $UPTIME seconds"

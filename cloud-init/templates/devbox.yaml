@@ -1,0 +1,65 @@
+#cloud-config
+# Development Box Cloud-Init Template
+# Sets up a general-purpose development environment
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - build-essential
+  - git
+  - curl
+  - wget
+  - vim
+  - htop
+  - tmux
+  - jq
+  - unzip
+  - python3
+  - python3-pip
+  - python3-venv
+  - ufw
+
+runcmd:
+  # Configure firewall (SSH only)
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw --force enable
+
+  # Set timezone
+  - timedatectl set-timezone UTC
+
+  # Create development directory
+  - mkdir -p /home/admin/projects
+  - chown admin:admin /home/admin/projects
+
+  # Install common Python packages globally
+  - pip3 install --upgrade pip
+  - pip3 install virtualenv pipenv
+
+write_files:
+  - path: /home/admin/.bash_aliases
+    owner: admin:admin
+    permissions: '0644'
+    content: |
+      # Development aliases
+      alias ll='ls -alF'
+      alias la='ls -A'
+      alias l='ls -CF'
+      alias gs='git status'
+      alias gd='git diff'
+      alias gl='git log --oneline -10'
+
+  - path: /home/admin/.vimrc
+    owner: admin:admin
+    permissions: '0644'
+    content: |
+      set number
+      set expandtab
+      set tabstop=4
+      set shiftwidth=4
+      set autoindent
+      syntax on
+
+final_message: "Development environment ready after $UPTIME seconds"
