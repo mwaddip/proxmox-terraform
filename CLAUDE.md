@@ -4,6 +4,18 @@
 
 This is a Proxmox VM automation system with NFT-based web3 authentication. Read `PROJECT.yaml` for the complete machine-readable API specification.
 
+## Environment Variables
+
+Essential environment variables (contract addresses, deployer key, RPC URL) are stored in:
+```
+~/projects/sharedenv/blockhost.env
+```
+
+Source this file before running scripts that interact with the blockchain:
+```bash
+source ~/projects/sharedenv/blockhost.env
+```
+
 ## Quick Reference
 
 ```bash
