@@ -1,6 +1,6 @@
 # Proxmox-Terraform Project Manifest
 # Machine-readable overview for integration and automation
-# Last updated: 2026-01-29 (wallet_address added to register_vm)
+# Last updated: 2026-01-30 (config override via /etc/blockhost/)
 
 name: proxmox-terraform
 version: "0.1.0"
@@ -160,9 +160,15 @@ python_api:
           - Deployer private key with funds
 
 # Configuration files
+# Config loading checks /etc/blockhost/ first, then falls back to config/
+# This allows deployment-specific configs to persist across submodule updates
+config_override_path: /etc/blockhost/
+
 config_files:
   db_config:
-    path: config/db.yaml
+    filename: db.yaml
+    default_path: config/db.yaml
+    override_path: /etc/blockhost/db.yaml
     description: Database and resource allocation settings
     key_settings:
       - terraform_dir: Directory where .tf.json files are written
@@ -172,7 +178,9 @@ config_files:
       - default_expiry_days: Default VM expiry
 
   web3_config:
-    path: config/web3-defaults.yaml
+    filename: web3-defaults.yaml
+    default_path: config/web3-defaults.yaml
+    override_path: /etc/blockhost/web3-defaults.yaml
     description: Blockchain and NFT authentication settings
     key_settings:
       - blockchain.chain_id: Ethereum chain ID

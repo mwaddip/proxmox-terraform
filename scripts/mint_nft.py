@@ -18,10 +18,20 @@ from typing import Optional
 
 import yaml
 
+PROJECT_DIR = Path(__file__).parent.parent
+
+
+def get_config_path(filename: str) -> Path:
+    """Get config file path, checking /etc/blockhost/ first."""
+    etc_path = Path("/etc/blockhost") / filename
+    if etc_path.exists():
+        return etc_path
+    return PROJECT_DIR / "config" / filename
+
 
 def load_web3_defaults() -> dict:
     """Load web3 default configuration."""
-    config_path = Path(__file__).parent.parent / "config" / "web3-defaults.yaml"
+    config_path = get_config_path("web3-defaults.yaml")
     with open(config_path) as f:
         return yaml.safe_load(f)
 

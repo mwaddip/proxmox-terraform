@@ -37,9 +37,17 @@ from vm_db import get_database
 PROJECT_DIR = Path(__file__).parent.parent
 
 
+def get_config_path(filename: str) -> Path:
+    """Get config file path, checking /etc/blockhost/ first."""
+    etc_path = Path("/etc/blockhost") / filename
+    if etc_path.exists():
+        return etc_path
+    return PROJECT_DIR / "config" / filename
+
+
 def get_terraform_dir() -> Path:
     """Get the Terraform working directory from config."""
-    config_path = PROJECT_DIR / "config" / "db.yaml"
+    config_path = get_config_path("db.yaml")
     with open(config_path) as f:
         config = yaml.safe_load(f)
     tf_dir = config.get("terraform_dir")

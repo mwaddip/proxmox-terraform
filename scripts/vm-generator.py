@@ -39,9 +39,17 @@ from mint_nft import mint_nft
 PROJECT_DIR = Path(__file__).parent.parent
 
 
+def get_config_path(filename: str) -> Path:
+    """Get config file path, checking /etc/blockhost/ first."""
+    etc_path = Path("/etc/blockhost") / filename
+    if etc_path.exists():
+        return etc_path
+    return PROJECT_DIR / "config" / filename
+
+
 def get_terraform_dir() -> Path:
     """Get the Terraform working directory from config."""
-    config_path = PROJECT_DIR / "config" / "db.yaml"
+    config_path = get_config_path("db.yaml")
     with open(config_path) as f:
         config = yaml.safe_load(f)
     tf_dir = config.get("terraform_dir")
@@ -76,14 +84,14 @@ def load_ssh_keys() -> list[str]:
 
 def load_web3_defaults() -> dict:
     """Load global web3 configuration defaults."""
-    config_path = PROJECT_DIR / "config" / "web3-defaults.yaml"
+    config_path = get_config_path("web3-defaults.yaml")
     with open(config_path) as f:
         return yaml.safe_load(f)
 
 
 def load_db_config() -> dict:
     """Load database configuration."""
-    config_path = PROJECT_DIR / "config" / "db.yaml"
+    config_path = get_config_path("db.yaml")
     with open(config_path) as f:
         return yaml.safe_load(f)
 

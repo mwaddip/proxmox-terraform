@@ -15,6 +15,16 @@ from pathlib import Path
 from typing import Optional
 import yaml
 
+PROJECT_DIR = Path(__file__).parent.parent
+
+
+def get_config_path(filename: str) -> Path:
+    """Get config file path, checking /etc/blockhost/ first."""
+    etc_path = Path("/etc/blockhost") / filename
+    if etc_path.exists():
+        return etc_path
+    return PROJECT_DIR / "config" / filename
+
 
 class VMDatabaseBase(ABC):
     """Abstract base class for VM database implementations."""
@@ -93,7 +103,7 @@ class VMDatabase(VMDatabaseBase):
             config_path: Path to db.yaml config file. If None, uses default location.
         """
         if config_path is None:
-            config_path = Path(__file__).parent.parent / "config" / "db.yaml"
+            config_path = get_config_path("db.yaml")
 
         with open(config_path) as f:
             self.config = yaml.safe_load(f)
@@ -333,11 +343,11 @@ class MockVMDatabase(VMDatabaseBase):
     def __init__(self, db_file: Optional[str] = None):
         """Initialize mock database."""
         if db_file is None:
-            db_file = Path(__file__).parent.parent / "accounting" / "mock-db.json"
+            db_file = PROJECT_DIR / "accounting" / "mock-db.json"
         self.db_file = Path(db_file)
 
         # Load config for IP pool settings
-        config_path = Path(__file__).parent.parent / "config" / "db.yaml"
+        config_path = get_config_path("db.yaml")
         with open(config_path) as f:
             self.config = yaml.safe_load(f)
 
