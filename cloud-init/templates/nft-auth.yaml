@@ -73,6 +73,72 @@ write_files:
       session [success=ok ignore=ignore module_unknown=ignore default=bad] pam_selinux.so open
       @include common-password
 
+  - path: /usr/local/bin/wait-for-nft.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      # Wait for NFT to be minted before starting the signing page
+      # The NFT is minted AFTER terraform apply succeeds, so there's a race condition
+
+      CONTRACT="${NFT_CONTRACT}"
+      RPC_URL="${RPC_URL}"
+      TOKEN_ID="${NFT_TOKEN_ID}"
+      TIMEOUT=300  # 5 minutes
+      INTERVAL=5   # Check every 5 seconds
+
+      echo "Waiting for NFT #$TOKEN_ID to be minted on contract $CONTRACT..."
+
+      # Convert token ID to hex (padded to 32 bytes)
+      TOKEN_HEX=$(printf '%064x' "$TOKEN_ID")
+
+      # ownerOf(uint256) function selector: 0x6352211e
+      CALL_DATA="0x6352211e$TOKEN_HEX"
+
+      check_nft_exists() {
+          # Use cast if available (faster, cleaner output)
+          if command -v cast &>/dev/null; then
+              cast call "$CONTRACT" "ownerOf(uint256)(address)" "$TOKEN_ID" --rpc-url "$RPC_URL" 2>/dev/null
+              return $?
+          fi
+
+          # Fallback to curl with JSON-RPC
+          response=$(curl -s -X POST "$RPC_URL" \
+              -H "Content-Type: application/json" \
+              -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_call\",\"params\":[{\"to\":\"$CONTRACT\",\"data\":\"$CALL_DATA\"},\"latest\"],\"id\":1}")
+
+          # Check if response contains an error (token doesn't exist = revert)
+          if echo "$response" | grep -q '"error"'; then
+              return 1
+          fi
+
+          # Check if result is a valid address (not 0x or empty)
+          result=$(echo "$response" | grep -o '"result":"[^"]*"' | cut -d'"' -f4)
+          if [ -z "$result" ] || [ "$result" = "0x" ]; then
+              return 1
+          fi
+
+          return 0
+      }
+
+      start_time=$(date +%s)
+      while true; do
+          if check_nft_exists; then
+              echo "NFT #$TOKEN_ID found!"
+              exit 0
+          fi
+
+          # Check timeout
+          current_time=$(date +%s)
+          elapsed=$((current_time - start_time))
+          if [ $elapsed -ge $TIMEOUT ]; then
+              echo "Timeout waiting for NFT #$TOKEN_ID after ${TIMEOUT}s"
+              exit 1
+          fi
+
+          echo "NFT not found yet, retrying in ${INTERVAL}s... (${elapsed}s elapsed)"
+          sleep $INTERVAL
+      done
+
   - path: /etc/systemd/system/web3-sign.service
     content: |
       [Unit]
@@ -81,9 +147,10 @@ write_files:
 
       [Service]
       Type=simple
-      ExecStart=/usr/share/libpam-web3/scripts/extract-signing-page.sh --contract ${NFT_CONTRACT} --rpc-url ${RPC_URL} --token-id 0 --port 8080 --no-browser
-      Restart=always
-      RestartSec=5
+      ExecStartPre=/usr/local/bin/wait-for-nft.sh
+      ExecStart=/usr/share/libpam-web3/scripts/extract-signing-page.sh --contract ${NFT_CONTRACT} --rpc-url ${RPC_URL} --token-id ${NFT_TOKEN_ID} --port 8080 --no-browser
+      Restart=on-failure
+      RestartSec=30
 
       [Install]
       WantedBy=multi-user.target
