@@ -1,4 +1,4 @@
-# proxmox-terraform
+# blockhost-provisioner
 
 Terraform-based Proxmox VM automation with NFT web3 authentication. Creates Debian 12 VMs from a cloud-init template that includes [libpam-web3](https://github.com/mwaddip/libpam-web3) for Ethereum wallet-based SSH login.
 
@@ -13,16 +13,35 @@ VMs are tracked in a JSON database with IP/VMID allocation, expiry dates, and NF
 
 ## Prerequisites
 
+- **blockhost-common** package - Provides configuration and database modules
+- **libpam-web3-tools** package - Provides signing page HTML and `pam_web3_tool` CLI
 - [Terraform](https://www.terraform.io/) with the [bpg/proxmox](https://registry.terraform.io/providers/bpg/proxmox/latest) provider
 - Proxmox VE host accessible via SSH (`root@ix`)
 - [Foundry](https://getfoundry.sh/) (`cast` CLI) for NFT minting
 - `libguestfs-tools` for template image customization
-- `pam_web3_tool` (from libpam-web3) for ECIES encryption
-- Python 3 with `pyyaml`
 
-## Integration / Submodule Usage
+## Installation
 
-For programmatic integration or when using this as a git submodule:
+```bash
+# Install dependencies
+sudo dpkg -i blockhost-common_*.deb
+sudo dpkg -i libpam-web3-tools_*.deb
+sudo dpkg -i blockhost-provisioner_*.deb
+
+# Initialize server (generates keys and config)
+sudo /path/to/blockhost-engine/scripts/init-server.sh
+
+# Configure settings
+sudo editor /etc/blockhost/db.yaml
+sudo editor /etc/blockhost/web3-defaults.yaml
+
+# Build Proxmox template
+./scripts/build-template.sh
+```
+
+## Integration / Package Usage
+
+For programmatic integration:
 
 - **`PROJECT.yaml`** - Machine-readable API specification with all entry points, arguments, Python APIs, and configuration options
 - **`CLAUDE.md`** - Instructions for AI assistants working with this codebase
@@ -38,7 +57,6 @@ Read `PROJECT.yaml` for the complete interface documentation.
 ├── scripts/
 │   ├── build-template.sh   # Build Debian 12 template with libpam-web3
 │   ├── vm-generator.py     # Generate + apply VM Terraform configs
-│   ├── vm_db.py            # VM database (JSON with file locking)
 │   ├── vm-gc.py            # Garbage collect expired VMs
 │   └── mint_nft.py         # Mint access NFTs via Foundry cast
 ├── cloud-init/
@@ -46,12 +64,8 @@ Read `PROJECT.yaml` for the complete interface documentation.
 │       ├── nft-auth.yaml   # NFT auth cloud-init (default)
 │       ├── webserver.yaml  # Basic webserver cloud-init
 │       └── devbox.yaml     # Dev environment cloud-init
-├── config/
-│   ├── web3-defaults.yaml  # Blockchain/NFT settings
-│   └── db.yaml             # Database and IP pool config
 ├── accounting/
 │   └── mock-db.json        # Mock database for testing
-├── vms/                    # Generated .tf.json files (gitignored)
 ├── provider.tf.json        # Terraform provider config
 └── variables.tf.json       # Terraform variable defaults
 ```
@@ -98,6 +112,13 @@ python3 scripts/vm-generator.py web-001 \
     --tags web production \
     --apply
 
+# With encrypted connection details (subscription system workflow)
+python3 scripts/vm-generator.py web-001 \
+    --owner-wallet 0xAbCd... \
+    --user-signature 0x... \
+    --decrypt-message "libpam-web3:0xAbCd...:12345" \
+    --apply
+
 # Without web3 auth
 python3 scripts/vm-generator.py web-001 --no-web3 --cloud-init webserver
 
@@ -117,30 +138,24 @@ python3 scripts/vm-gc.py --grace-days 3
 python3 scripts/vm-gc.py --execute --grace-days 3
 
 # Cron (daily at 2 AM)
-0 2 * * * cd /path/to/proxmox-terraform && python3 scripts/vm-gc.py --execute --grace-days 3 >> logs/gc.log 2>&1
+0 2 * * * cd /path/to/blockhost-provisioner && python3 scripts/vm-gc.py --execute --grace-days 3 >> logs/gc.log 2>&1
 ```
-
-### `scripts/vm_db.py`
-
-JSON-based VM database with file locking (`fcntl`). Tracks:
-
-- VM records (name, VMID, IP, owner, expiry, status)
-- IP address allocation pool (192.168.122.200-250)
-- VMID allocation range (100-999)
-- NFT token IDs with status tracking (reserved / minted / failed)
-
-Two implementations: `VMDatabase` (production, file-locked) and `MockVMDatabase` (testing, in-memory backed by `accounting/mock-db.json`).
 
 ### `scripts/mint_nft.py`
 
 Mints access credential NFTs after VM creation:
 
-- Encrypts the machine ID using ECIES via `pam_web3_tool`
+- Embeds the signing page HTML from libpam-web3-tools
+- Optionally embeds encrypted connection details (userEncrypted, decryptMessage)
 - Calls the NFT contract's `mint()` function via Foundry's `cast send`
 
 ```bash
 # Standalone minting
 python3 scripts/mint_nft.py --owner-wallet 0x1234... --machine-id web-001
+
+# With encrypted connection details
+python3 scripts/mint_nft.py --owner-wallet 0x1234... --machine-id web-001 \
+    --user-encrypted 0xabc... --decrypt-message "libpam-web3:0x1234...:12345"
 
 # Dry run
 python3 scripts/mint_nft.py --owner-wallet 0x1234... --machine-id web-001 --dry-run
@@ -148,13 +163,15 @@ python3 scripts/mint_nft.py --owner-wallet 0x1234... --machine-id web-001 --dry-
 
 ## Configuration
 
-### `config/web3-defaults.yaml`
+Configuration files are provided by **blockhost-common** in `/etc/blockhost/`:
 
-Global blockchain settings shared across all VMs: chain ID, NFT contract address, RPC URL, deployer key path, and server ECIES public key. Update these with your deployed contract details.
+### `/etc/blockhost/web3-defaults.yaml`
 
-### `config/db.yaml`
+Blockchain settings: chain ID, NFT contract address, RPC URL, deployer key path. Update these with your deployed contract details.
 
-Database configuration: production DB file path, IP pool range, VMID range, default expiry, and GC grace period.
+### `/etc/blockhost/db.yaml`
+
+Database configuration: production DB file path, terraform_dir, IP pool range, VMID range, default expiry, and GC grace period.
 
 ## NFT auth flow
 
@@ -166,7 +183,10 @@ Database configuration: production DB file path, IP pool range, VMID range, defa
 
 ## Setup
 
-1. Edit `config/web3-defaults.yaml` with your contract address, RPC URL, and keys
-2. Build the template: `./scripts/build-template.sh`
-3. Create `terraform.tfvars` with your Proxmox credentials
-4. Create VMs: `python3 scripts/vm-generator.py <name> --owner-wallet <addr> --apply`
+1. Install blockhost-common and libpam-web3-tools packages
+2. Run `init-server.sh` from blockhost-engine to generate keys and config
+3. Edit `/etc/blockhost/web3-defaults.yaml` with your contract address and RPC URL
+4. Edit `/etc/blockhost/db.yaml` with your terraform_dir path
+5. Build the template: `./scripts/build-template.sh`
+6. Create `terraform.tfvars` in terraform_dir with your Proxmox credentials
+7. Create VMs: `python3 scripts/vm-generator.py <name> --owner-wallet <addr> --apply`

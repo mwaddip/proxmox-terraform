@@ -17,24 +17,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-import yaml
-
-PROJECT_DIR = Path(__file__).parent.parent
-
-
-def get_config_path(filename: str) -> Path:
-    """Get config file path, checking /etc/blockhost/ first."""
-    etc_path = Path("/etc/blockhost") / filename
-    if etc_path.exists():
-        return etc_path
-    return PROJECT_DIR / "config" / filename
-
-
-def load_web3_defaults() -> dict:
-    """Load web3 default configuration."""
-    config_path = get_config_path("web3-defaults.yaml")
-    with open(config_path) as f:
-        return yaml.safe_load(f)
+from blockhost.config import load_web3_config
 
 
 def read_deployer_key(config: dict) -> str:
@@ -133,7 +116,7 @@ def mint_nft(
         Transaction hash if successful, None if dry run
     """
     if config is None:
-        config = load_web3_defaults()
+        config = load_web3_config()
 
     nft_contract = config["blockchain"]["nft_contract"]
     rpc_url = config["blockchain"]["rpc_url"]

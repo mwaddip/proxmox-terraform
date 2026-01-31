@@ -1,8 +1,12 @@
-# Claude Instructions for proxmox-terraform
+# Claude Instructions for blockhost-provisioner
 
 ## Project Overview
 
-This is a Proxmox VM automation system with NFT-based web3 authentication. Read `PROJECT.yaml` for the complete machine-readable API specification.
+This is the Proxmox VM provisioning component of the Blockhost system, providing NFT-based web3 authentication. Read `PROJECT.yaml` for the complete machine-readable API specification.
+
+**Dependencies:**
+- `blockhost-common` - Provides `blockhost.config` and `blockhost.vm_db` modules
+- `libpam-web3-tools` - Provides signing page HTML and `pam_web3_tool` CLI
 
 ## Environment Variables
 
@@ -64,18 +68,25 @@ If yes to any, update `PROJECT.yaml` accordingly.
 |------|---------|
 | `PROJECT.yaml` | Machine-readable API spec (KEEP UPDATED) |
 | `scripts/vm-generator.py` | Main entry point for VM creation |
-| `scripts/vm_db.py` | Database abstraction (VMDatabase, MockVMDatabase) |
 | `scripts/vm-gc.py` | Garbage collection for expired VMs |
 | `scripts/mint_nft.py` | NFT minting via Foundry cast |
 | `scripts/build-template.sh` | Proxmox template builder |
-| `config/db.yaml` | Database and terraform_dir config |
-| `config/web3-defaults.yaml` | Blockchain/NFT settings |
+| `cloud-init/templates/nft-auth.yaml` | Cloud-init template for web3-authenticated VMs |
+
+### From blockhost-common package
+
+| Module/File | Purpose |
+|-------------|---------|
+| `blockhost.config` | Config loading (load_db_config, load_web3_config, get_terraform_dir) |
+| `blockhost.vm_db` | Database abstraction (VMDatabase, MockVMDatabase, get_database) |
+| `/etc/blockhost/db.yaml` | Database and terraform_dir config |
+| `/etc/blockhost/web3-defaults.yaml` | Blockchain/NFT settings |
 
 ## Configuration
 
 ### terraform_dir
 
-The `terraform_dir` setting in `config/db.yaml` specifies where:
+The `terraform_dir` setting in `/etc/blockhost/db.yaml` specifies where:
 - Generated `.tf.json` files are written
 - Terraform commands are executed
 
@@ -84,7 +95,7 @@ This is typically a separate directory with Proxmox provider credentials and ter
 ### Mock vs Production Database
 
 - `--mock` flag uses `MockVMDatabase` backed by `accounting/mock-db.json`
-- Production uses `VMDatabase` with file at path specified in `config/db.yaml`
+- Production uses `VMDatabase` with file at path specified in `/etc/blockhost/db.yaml`
 
 ## Testing Changes
 
@@ -93,13 +104,15 @@ Always test with mock database first:
 python3 scripts/vm-generator.py test-vm --owner-wallet 0x1234... --mock --skip-mint
 ```
 
-## Submodule Integration
+## Package Integration
 
-When this repo is used as a submodule:
-1. Parent project should configure `config/db.yaml` with correct `terraform_dir`
-2. Parent project should configure `config/web3-defaults.yaml` with contract details
-3. Import scripts via: `python3 path/to/submodule/scripts/vm-generator.py ...`
-4. Read `PROJECT.yaml` for complete API documentation
+When installed as a package:
+1. Install `blockhost-common` first (provides config and database modules)
+2. Install `blockhost-provisioner` (this package)
+3. Install `libpam-web3-tools` (provides signing page and pam_web3_tool)
+4. Configure `/etc/blockhost/db.yaml` with correct `terraform_dir`
+5. Configure `/etc/blockhost/web3-defaults.yaml` with contract details
+6. Run scripts via: `blockhost-vm-create`, `blockhost-vm-gc`, etc.
 
 ## NFT Token ID Management
 

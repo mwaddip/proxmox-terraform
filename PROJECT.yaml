@@ -1,13 +1,16 @@
-# Proxmox-Terraform Project Manifest
+# Blockhost Provisioner Project Manifest
 # Machine-readable overview for integration and automation
-# Last updated: 2026-01-30 (updated for new NFT contract - removed serverEncrypted)
+# Last updated: 2026-01-31 (renamed to blockhost-provisioner, integrated blockhost-common)
 
-name: proxmox-terraform
-version: "0.1.0"
+name: blockhost-provisioner
+version: "0.2.0"
 description: |
   Terraform-based Proxmox VM automation with NFT web3 authentication.
   Creates Debian 12 VMs from a cloud-init template that includes libpam-web3
   for Ethereum wallet-based SSH login.
+
+  This package provides VM provisioning scripts. Configuration and database
+  modules are provided by the blockhost-common package.
 
 # Primary entry points for integration
 entry_points:
@@ -134,29 +137,6 @@ entry_points:
 
 # Python module API (for programmatic use)
 python_api:
-  vm_db:
-    module: scripts/vm_db.py
-    classes:
-      - name: VMDatabase
-        description: Production database with file locking (fcntl)
-        methods:
-          - allocate_vmid() -> int
-          - allocate_ip() -> Optional[str]
-          - register_vm(name, vmid, ip, owner, expiry_days, purpose, wallet_address=None) -> dict
-          - get_vm(name) -> Optional[dict]
-          - get_expired_vms(grace_days=0) -> list[dict]
-          - mark_destroyed(name) -> None
-          - reserve_nft_token_id(vm_name) -> int
-          - mark_nft_minted(token_id, owner_wallet) -> None
-          - mark_nft_failed(token_id) -> None
-      - name: MockVMDatabase
-        description: In-memory database backed by accounting/mock-db.json
-        methods: Same as VMDatabase
-    factory:
-      name: get_database
-      signature: get_database(use_mock=False) -> VMDatabaseBase
-      description: Returns MockVMDatabase if use_mock=True, else VMDatabase
-
   mint_nft:
     module: scripts/mint_nft.py
     functions:
@@ -166,40 +146,24 @@ python_api:
         requires:
           - Foundry (cast CLI)
           - Deployer private key with funds
-          - Signing page HTML (from libpam-web3)
+          - Signing page HTML (from libpam-web3-tools)
       - name: load_signing_page
         signature: load_signing_page(config, user_encrypted="", decrypt_message="") -> str
         description: Load signing page HTML, embed decrypt credentials if provided, return as base64
 
-# Configuration files
-# Config loading checks /etc/blockhost/ first, then falls back to config/
-# This allows deployment-specific configs to persist across submodule updates
-config_override_path: /etc/blockhost/
-
-config_files:
-  db_config:
-    filename: db.yaml
-    default_path: config/db.yaml
-    override_path: /etc/blockhost/db.yaml
-    description: Database and resource allocation settings
-    key_settings:
-      - terraform_dir: Directory where .tf.json files are written
-      - db_file: Production database file path
-      - ip_pool: IP address allocation range
-      - vmid_range: VMID allocation range
-      - default_expiry_days: Default VM expiry
-
-  web3_config:
-    filename: web3-defaults.yaml
-    default_path: config/web3-defaults.yaml
-    override_path: /etc/blockhost/web3-defaults.yaml
-    description: Blockchain and NFT authentication settings
-    key_settings:
-      - blockchain.chain_id: Ethereum chain ID
-      - blockchain.nft_contract: NFT contract address
-      - blockchain.rpc_url: JSON-RPC endpoint
-      - deployer.private_key_file: Path to deployer key
-      - signing_page.html_path: Path to signing page HTML (embedded in NFT)
+# Configuration and database modules are provided by blockhost-common
+# See: from blockhost.config import load_db_config, load_web3_config, get_terraform_dir
+# See: from blockhost.vm_db import get_database, VMDatabase, MockVMDatabase
+external_modules:
+  blockhost_common:
+    package: blockhost-common
+    provides:
+      - blockhost.config: Path constants, config loading (load_db_config, load_web3_config, get_terraform_dir)
+      - blockhost.vm_db: Database classes (VMDatabase, MockVMDatabase, get_database)
+    config_files:
+      - /etc/blockhost/db.yaml
+      - /etc/blockhost/web3-defaults.yaml
+      - /etc/blockhost/blockhost.yaml
 
 # Cloud-init templates
 cloud_init_templates:
@@ -240,33 +204,40 @@ cloud_init_templates:
 
 # External dependencies
 dependencies:
+  packages:
+    - blockhost-common: Config and database modules
+    - libpam-web3-tools: Signing page HTML, pam_web3_tool CLI
   system:
     - terraform: ">=1.0"
     - libguestfs-tools: For virt-customize
     - foundry: For cast CLI (NFT minting)
   python:
-    - pyyaml: YAML parsing
+    - pyyaml: YAML parsing (from blockhost-common)
   proxmox:
     - provider: bpg/proxmox >=0.50.0
     - template_vmid: 9001 (Debian 12 with libpam-web3)
 
 # Integration notes
 integration:
-  as_submodule:
-    recommended_path: infra/proxmox-terraform
+  as_package:
+    description: |
+      This package is designed to be installed alongside blockhost-common.
+      Install both packages, then configure /etc/blockhost/ config files.
     setup_steps:
+      - Install blockhost-common package (provides config modules)
+      - Install blockhost-provisioner package (provides this package)
+      - Install libpam-web3-tools package (provides signing page)
+      - Run init-server.sh from blockhost-engine to generate keys and config
+      - Configure /etc/blockhost/db.yaml with terraform_dir path
+      - Configure /etc/blockhost/web3-defaults.yaml with contract details
       - Run build-template.sh to deploy template to Proxmox
-      - Configure config/web3-defaults.yaml with contract details
-      - Configure config/db.yaml with terraform_dir path
-      - Ensure SSH access to Proxmox host
     usage: |
-      # From parent project
-      python3 infra/proxmox-terraform/scripts/vm-generator.py myvm \
-        --owner-wallet 0x... --apply
+      # Create VM with web3 auth
+      blockhost-vm-create myvm --owner-wallet 0x... --apply
 
   terraform_state:
-    location: Configured via terraform_dir in config/db.yaml
-    note: Generated .tf.json files are written to terraform_dir, not this repo
+    location: Configured via terraform_dir in /etc/blockhost/db.yaml
+    note: Generated .tf.json files are written to terraform_dir
 
 # Data flow
 workflow:

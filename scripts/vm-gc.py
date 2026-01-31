@@ -20,44 +20,14 @@ Cron example (daily at 2 AM):
 """
 
 import argparse
-import os
 import re
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-import yaml
-
-# Add scripts directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent))
-
-from vm_db import get_database
-
-PROJECT_DIR = Path(__file__).parent.parent
-
-
-def get_config_path(filename: str) -> Path:
-    """Get config file path, checking /etc/blockhost/ first."""
-    etc_path = Path("/etc/blockhost") / filename
-    if etc_path.exists():
-        return etc_path
-    return PROJECT_DIR / "config" / filename
-
-
-def get_terraform_dir() -> Path:
-    """Get the Terraform working directory from config."""
-    config_path = get_config_path("db.yaml")
-    with open(config_path) as f:
-        config = yaml.safe_load(f)
-    tf_dir = config.get("terraform_dir")
-    if tf_dir:
-        return Path(tf_dir)
-    # Fallback: look for proxmox-testserver symlink
-    symlink = PROJECT_DIR / "proxmox-testserver"
-    if symlink.exists():
-        return symlink.resolve()
-    return PROJECT_DIR
+from blockhost.config import get_terraform_dir
+from blockhost.vm_db import get_database
 
 
 def sanitize_resource_name(name: str) -> str:

@@ -20,7 +20,6 @@ Usage:
 
 import argparse
 import json
-import os
 import re
 import secrets
 import subprocess
@@ -28,39 +27,17 @@ import sys
 from pathlib import Path
 from string import Template
 
-import yaml
+from blockhost.config import (
+    get_terraform_dir,
+    load_db_config,
+    load_web3_config,
+)
+from blockhost.vm_db import get_database
 
-# Add scripts directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent))
-
-from vm_db import get_database
 from mint_nft import mint_nft
 
 
 PROJECT_DIR = Path(__file__).parent.parent
-
-
-def get_config_path(filename: str) -> Path:
-    """Get config file path, checking /etc/blockhost/ first."""
-    etc_path = Path("/etc/blockhost") / filename
-    if etc_path.exists():
-        return etc_path
-    return PROJECT_DIR / "config" / filename
-
-
-def get_terraform_dir() -> Path:
-    """Get the Terraform working directory from config."""
-    config_path = get_config_path("db.yaml")
-    with open(config_path) as f:
-        config = yaml.safe_load(f)
-    tf_dir = config.get("terraform_dir")
-    if tf_dir:
-        return Path(tf_dir)
-    # Fallback: look for proxmox-testserver symlink
-    symlink = PROJECT_DIR / "proxmox-testserver"
-    if symlink.exists():
-        return symlink.resolve()
-    return PROJECT_DIR
 
 
 def sanitize_resource_name(name: str) -> str:
@@ -81,20 +58,6 @@ def load_ssh_keys() -> list[str]:
             keys.append(path.read_text().strip())
 
     return keys
-
-
-def load_web3_defaults() -> dict:
-    """Load global web3 configuration defaults."""
-    config_path = get_config_path("web3-defaults.yaml")
-    with open(config_path) as f:
-        return yaml.safe_load(f)
-
-
-def load_db_config() -> dict:
-    """Load database configuration."""
-    config_path = get_config_path("db.yaml")
-    with open(config_path) as f:
-        return yaml.safe_load(f)
 
 
 def render_cloud_init(template_name: str, variables: dict) -> str:
@@ -349,7 +312,7 @@ Examples:
             template_name = "nft-auth"
 
         # Load web3 defaults for template variables
-        web3_config = load_web3_defaults()
+        web3_config = load_web3_config()
 
         # Format SSH keys for cloud-init
         ssh_keys_yaml = ""
@@ -451,7 +414,7 @@ Examples:
         if web3_enabled and nft_token_id is not None and not args.skip_mint:
             print(f"\nMinting NFT #{nft_token_id} to {args.owner_wallet}...")
             try:
-                web3_config = load_web3_defaults()
+                web3_config = load_web3_config()
 
                 # Encrypt connection details if user signature provided
                 user_encrypted = "0x"
