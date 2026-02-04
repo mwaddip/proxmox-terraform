@@ -126,21 +126,37 @@ qm create ${TEMPLATE_VMID} --name "${TEMPLATE_NAME}" \
     --ostype l26 --scsihw virtio-scsi-pci
 
 # Import disk and capture output to get the actual volume ID
-# Output format: "Successfully imported disk as 'unused0:STORAGE:path'"
-# This handles both LVM (local-lvm:vm-9001-disk-0) and directory (local:9001/vm-9001-disk-0.qcow2) storage
+# Output format varies:
+#   "Successfully imported disk as 'unused0:local-lvm:vm-9001-disk-0'"
+#   "Successfully imported disk as 'unused0:local:9001/vm-9001-disk-0.qcow2'"
 echo "Importing disk..."
 IMPORT_OUTPUT=\$(qm importdisk ${TEMPLATE_VMID} /var/lib/vz/template/qcow2/${IMAGE_NAME} ${STORAGE} 2>&1)
+echo "Import output:"
 echo "\$IMPORT_OUTPUT"
 
 # Extract the volume ID from the import output
-# Matches: "unused0:local-lvm:vm-9001-disk-0" or "unused0:local:9001/vm-9001-disk-0.qcow2"
-VOLUME_ID=\$(echo "\$IMPORT_OUTPUT" | grep -oP "unused0:\K[^']+")
+# Look for the pattern after "as 'unused0:" and before the closing quote
+VOLUME_ID=\$(echo "\$IMPORT_OUTPUT" | grep -oP "as 'unused0:\K[^']+" | head -1)
+
+# Fallback: try to match STORAGE:something pattern directly
+if [[ -z "\$VOLUME_ID" ]]; then
+    echo "Primary regex failed, trying fallback..."
+    VOLUME_ID=\$(echo "\$IMPORT_OUTPUT" | grep -oP "${STORAGE}:[^'\"[:space:]]+" | head -1)
+fi
+
+# Second fallback: look for any volume pattern in the last line
+if [[ -z "\$VOLUME_ID" ]]; then
+    echo "Fallback regex failed, trying line-based extraction..."
+    # Get the line containing "imported" and extract volume after unused0:
+    VOLUME_ID=\$(echo "\$IMPORT_OUTPUT" | grep -i "imported" | sed -n "s/.*unused0:\([^']*\).*/\1/p" | head -1)
+fi
 
 if [[ -z "\$VOLUME_ID" ]]; then
     echo "Error: Failed to extract volume ID from import output"
+    echo "Please check the output format above and report this issue"
     exit 1
 fi
-echo "Imported volume: \$VOLUME_ID"
+echo "Extracted volume ID: \$VOLUME_ID"
 
 # Attach disk using the actual volume ID (works for both LVM and directory storage)
 qm set ${TEMPLATE_VMID} --scsi0 "\$VOLUME_ID"
