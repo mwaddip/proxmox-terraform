@@ -136,19 +136,20 @@ echo "\$IMPORT_OUTPUT"
 
 # Extract the volume ID from the import output
 # Look for the pattern after "as 'unused0:" and before the closing quote
-VOLUME_ID=\$(echo "\$IMPORT_OUTPUT" | grep -oP "as 'unused0:\K[^']+" | head -1)
+# Note: || true prevents pipefail from exiting when grep finds no match
+VOLUME_ID=\$(echo "\$IMPORT_OUTPUT" | grep -oP "as 'unused0:\K[^']+" | head -1 || true)
 
 # Fallback: try to match STORAGE:something pattern directly
 if [[ -z "\$VOLUME_ID" ]]; then
     echo "Primary regex failed, trying fallback..."
-    VOLUME_ID=\$(echo "\$IMPORT_OUTPUT" | grep -oP "${STORAGE}:[^'\"[:space:]]+" | head -1)
+    VOLUME_ID=\$(echo "\$IMPORT_OUTPUT" | grep -oP "${STORAGE}:[^'\"[:space:]]+" | head -1 || true)
 fi
 
 # Second fallback: look for any volume pattern in the last line
 if [[ -z "\$VOLUME_ID" ]]; then
     echo "Fallback regex failed, trying line-based extraction..."
     # Get the line containing "imported" and extract volume after unused0:
-    VOLUME_ID=\$(echo "\$IMPORT_OUTPUT" | grep -i "imported" | sed -n "s/.*unused0:\([^']*\).*/\1/p" | head -1)
+    VOLUME_ID=\$(echo "\$IMPORT_OUTPUT" | grep -i "imported" | sed -n "s/.*unused0:\([^']*\).*/\1/p" | head -1 || true)
 fi
 
 if [[ -z "\$VOLUME_ID" ]]; then
