@@ -80,22 +80,71 @@ entry_points:
         --cpu 2 --memory 2048 \
         --apply
 
-  destroy_expired_vms:
+  garbage_collection:
     script: scripts/vm-gc.py
-    description: Garbage collect VMs past their expiry date
+    description: |
+      Two-phase VM garbage collection:
+      Phase 1 (Suspend): Shuts down expired VMs, preserves disk data
+      Phase 2 (Destroy): Destroys suspended VMs past grace period
     optional_args:
       - name: --execute
         type: flag
-        description: Actually destroy VMs (default is dry run)
+        description: Actually perform actions (default is dry run)
+      - name: --suspend-only
+        type: flag
+        description: Only run Phase 1 (suspend expired VMs)
+      - name: --destroy-only
+        type: flag
+        description: Only run Phase 2 (destroy past-grace VMs)
       - name: --grace-days
         type: int
-        default: 0
-        description: Grace period after expiry before destruction
+        description: Override grace period from config (days after expiry before destroy)
       - name: --mock
         type: flag
         description: Use mock database for testing
+      - name: --verbose
+        type: flag
+        description: Verbose output
+    systemd_timer:
+      timer_file: systemd/blockhost-gc.timer
+      service_file: systemd/blockhost-gc.service
+      schedule: Daily at 2:00 AM with up to 30 minutes randomized delay
     example: |
-      python3 scripts/vm-gc.py --execute --grace-days 3
+      # Dry run both phases
+      python3 scripts/vm-gc.py
+
+      # Execute both phases
+      python3 scripts/vm-gc.py --execute
+
+      # Only suspend expired VMs
+      python3 scripts/vm-gc.py --execute --suspend-only
+
+      # Check timer status
+      systemctl status blockhost-gc.timer
+
+  resume_vm:
+    script: scripts/vm-resume.py
+    description: Resume a suspended VM, restoring it to active status
+    required_args:
+      - name: vm_name
+        position: 1
+        description: Name of the VM to resume
+    optional_args:
+      - name: --extend-days
+        type: int
+        description: Extend expiry by this many days (default from config)
+      - name: --mock
+        type: flag
+        description: Use mock database for testing
+      - name: --dry-run
+        type: flag
+        description: Show what would be done without making changes
+    example: |
+      # Resume a suspended VM
+      blockhost-vm-resume myvm
+
+      # Resume and extend expiry by 30 days
+      blockhost-vm-resume myvm --extend-days 30
 
   mint_nft:
     script: scripts/mint_nft.py
@@ -247,6 +296,24 @@ integration:
   terraform_state:
     location: Configured via terraform_dir in /etc/blockhost/db.yaml
     note: Generated .tf.json files are written to terraform_dir
+
+# VM Status Lifecycle
+vm_lifecycle:
+  statuses:
+    - active: VM is running and accessible
+    - suspended: VM shut down (expired but within grace period), disk preserved
+    - destroyed: VM and disk removed, database entry marked
+  transitions:
+    - "active -> suspended": Via vm-gc.py Phase 1 (when VM expires)
+    - "suspended -> active": Via vm-resume.py (when subscription extended)
+    - "suspended -> destroyed": Via vm-gc.py Phase 2 (when grace period ends)
+  grace_period:
+    description: |
+      After a VM expires, it enters a grace period before destruction.
+      During this time, the VM is suspended (shut down but disk preserved).
+      Users can extend their subscription to resume the VM.
+    config_key: gc_grace_days (in /etc/blockhost/db.yaml)
+    default: 7 days
 
 # Data flow
 workflow:

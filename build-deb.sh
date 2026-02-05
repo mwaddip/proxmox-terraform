@@ -41,10 +41,12 @@ Description: Proxmox VM provisioning with NFT-based web3 authentication
  .
  Includes:
   - blockhost-vm-create: Create VMs with NFT authentication
-  - blockhost-vm-gc: Garbage collect expired VMs
+  - blockhost-vm-gc: Garbage collect expired VMs (two-phase: suspend then destroy)
+  - blockhost-vm-resume: Resume a suspended VM
   - blockhost-mint-nft: Mint access credential NFTs
   - blockhost-build-template: Build Proxmox VM template
   - Cloud-init templates for web3-authenticated VMs
+  - Systemd timer for daily garbage collection
  .
  Note: Terraform and Foundry (cast) must be installed manually.
 EOF
@@ -65,6 +67,11 @@ case "$1" in
             chmod 750 /var/lib/blockhost/terraform
         fi
 
+        # Enable and start the garbage collection timer
+        systemctl daemon-reload
+        systemctl enable blockhost-gc.timer
+        systemctl start blockhost-gc.timer
+
         echo ""
         echo "============================================================"
         echo "  blockhost-provisioner installed successfully!"
@@ -73,6 +80,7 @@ case "$1" in
         echo "Available commands:"
         echo "  blockhost-vm-create      - Create VMs with NFT authentication"
         echo "  blockhost-vm-gc          - Garbage collect expired VMs"
+        echo "  blockhost-vm-resume      - Resume a suspended VM"
         echo "  blockhost-mint-nft       - Mint access credential NFTs"
         echo "  blockhost-build-template - Build Proxmox VM template"
         echo ""
@@ -109,6 +117,15 @@ chmod 755 "${PKG}/DEBIAN/postinst"
 cat > "${PKG}/DEBIAN/prerm" << 'EOF'
 #!/bin/bash
 set -e
+
+case "$1" in
+    remove|upgrade|deconfigure)
+        # Stop and disable the garbage collection timer
+        systemctl stop blockhost-gc.timer 2>/dev/null || true
+        systemctl disable blockhost-gc.timer 2>/dev/null || true
+        ;;
+esac
+
 #DEBHELPER#
 exit 0
 EOF
@@ -137,6 +154,7 @@ chmod 755 "${PKG}/DEBIAN/postrm"
 # Create directory structure
 mkdir -p "${PKG}/usr/bin"
 mkdir -p "${PKG}/usr/lib/python3/dist-packages/blockhost"
+mkdir -p "${PKG}/usr/lib/systemd/system"
 mkdir -p "${PKG}/usr/share/blockhost/cloud-init/templates"
 mkdir -p "${PKG}/usr/share/doc/blockhost-provisioner"
 
@@ -144,13 +162,19 @@ mkdir -p "${PKG}/usr/share/doc/blockhost-provisioner"
 # Copy with new names and make executable
 cp "${SCRIPT_DIR}/scripts/vm-generator.py" "${PKG}/usr/bin/blockhost-vm-create"
 cp "${SCRIPT_DIR}/scripts/vm-gc.py" "${PKG}/usr/bin/blockhost-vm-gc"
+cp "${SCRIPT_DIR}/scripts/vm-resume.py" "${PKG}/usr/bin/blockhost-vm-resume"
 cp "${SCRIPT_DIR}/scripts/mint_nft.py" "${PKG}/usr/bin/blockhost-mint-nft"
 cp "${SCRIPT_DIR}/scripts/build-template.sh" "${PKG}/usr/bin/blockhost-build-template"
 
 chmod 755 "${PKG}/usr/bin/blockhost-vm-create"
 chmod 755 "${PKG}/usr/bin/blockhost-vm-gc"
+chmod 755 "${PKG}/usr/bin/blockhost-vm-resume"
 chmod 755 "${PKG}/usr/bin/blockhost-mint-nft"
 chmod 755 "${PKG}/usr/bin/blockhost-build-template"
+
+# Install systemd units
+cp "${SCRIPT_DIR}/systemd/blockhost-gc.service" "${PKG}/usr/lib/systemd/system/"
+cp "${SCRIPT_DIR}/systemd/blockhost-gc.timer" "${PKG}/usr/lib/systemd/system/"
 
 # Install Python modules to /usr/lib/python3/dist-packages/blockhost/
 cp "${SCRIPT_DIR}/scripts/vm-generator.py" "${PKG}/usr/lib/python3/dist-packages/blockhost/vm_generator.py"
@@ -199,6 +223,9 @@ blockhost-provisioner (0.1.0) unstable; urgency=low
   * VM provisioning with NFT-based web3 authentication
   * IPv6 support for public VM access
   * Cloud-init templates for web3-authenticated VMs
+  * Two-phase VM lifecycle: suspend expired VMs, destroy after grace period
+  * Systemd timer for daily garbage collection
+  * VM resume script for extending subscriptions
 
  -- Blockhost Team <blockhost@example.com>  $(date -R)
 EOF
