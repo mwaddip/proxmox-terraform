@@ -116,7 +116,7 @@ python3 scripts/vm-generator.py web-001 \
 python3 scripts/vm-generator.py web-001 \
     --owner-wallet 0xAbCd... \
     --user-signature 0x... \
-    --decrypt-message "libpam-web3:0xAbCd...:12345" \
+    --public-secret "libpam-web3:0xAbCd...:12345" \
     --apply
 
 # Without web3 auth
@@ -146,7 +146,7 @@ python3 scripts/vm-gc.py --execute --grace-days 3
 Mints access credential NFTs after VM creation:
 
 - Embeds the signing page HTML from libpam-web3-tools
-- Optionally embeds encrypted connection details (userEncrypted, decryptMessage)
+- Optionally embeds encrypted connection details (userEncrypted, publicSecret)
 - Calls the NFT contract's `mint()` function via Foundry's `cast send`
 
 ```bash
@@ -155,7 +155,7 @@ python3 scripts/mint_nft.py --owner-wallet 0x1234... --machine-id web-001
 
 # With encrypted connection details
 python3 scripts/mint_nft.py --owner-wallet 0x1234... --machine-id web-001 \
-    --user-encrypted 0xabc... --decrypt-message "libpam-web3:0x1234...:12345"
+    --user-encrypted 0xabc... --public-secret "libpam-web3:0x1234...:12345"
 
 # Dry run
 python3 scripts/mint_nft.py --owner-wallet 0x1234... --machine-id web-001 --dry-run

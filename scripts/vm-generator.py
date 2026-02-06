@@ -331,7 +331,7 @@ Examples:
     parser.add_argument("--owner-wallet", help="Wallet address to receive the access NFT")
     parser.add_argument("--user-signature",
                         help="User's decrypted signature from subscription system (hex)")
-    parser.add_argument("--decrypt-message",
+    parser.add_argument("--public-secret",
                         help="Message the user signed during subscription")
     parser.add_argument("--no-web3", action="store_true", help="Disable web3 auth (use standard cloud-init)")
     parser.add_argument("--skip-mint", action="store_true", help="Skip NFT minting (for testing)")
@@ -553,7 +553,7 @@ Examples:
 
                 # Encrypt connection details if user signature provided
                 user_encrypted = "0x"
-                decrypt_message = args.decrypt_message or ""
+                public_secret = args.public_secret or ""
 
                 if args.user_signature:
                     print("Encrypting connection details...")
@@ -582,7 +582,7 @@ Examples:
                     owner_wallet=args.owner_wallet,
                     machine_id=args.name,
                     user_encrypted=user_encrypted,
-                    decrypt_message=decrypt_message,
+                    public_secret=public_secret,
                     config=web3_config,
                 )
                 db.mark_nft_minted(nft_token_id, args.owner_wallet)

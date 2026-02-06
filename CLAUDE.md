@@ -33,12 +33,12 @@ python3 scripts/vm-generator.py <name> --owner-wallet <0x...> [--apply]
 
 # Create VM with encrypted connection details (subscription system workflow)
 python3 scripts/vm-generator.py <name> --owner-wallet <0x...> \
-    --user-signature <0x...> --decrypt-message "libpam-web3:<address>:<nonce>" \
+    --user-signature <0x...> --public-secret "libpam-web3:<address>:<nonce>" \
     [--apply]
 
 # Mint NFT manually (with encrypted connection details)
 python3 scripts/mint_nft.py --owner-wallet <0x...> --machine-id <name> \
-    --user-encrypted <0x...> --decrypt-message "libpam-web3:<address>:<nonce>"
+    --user-encrypted <0x...> --public-secret "libpam-web3:<address>:<nonce>"
 
 # Garbage collect expired VMs
 python3 scripts/vm-gc.py [--execute] [--grace-days N]
@@ -136,13 +136,13 @@ When using the subscription system, connection details are encrypted into the NF
 2. **Subscription system calls vm-generator.py** with:
    - `--owner-wallet`: User's wallet address
    - `--user-signature`: The decrypted signature (hex)
-   - `--decrypt-message`: The original message that was signed
+   - `--public-secret`: The original message that was signed
 3. **vm-generator.py** creates the VM, then:
    - Encrypts connection details (hostname, port, username) using `pam_web3_tool encrypt-symmetric`
    - Key derivation: `keccak256(signature_bytes)` → 32-byte AES key
    - Mints NFT with encrypted data in `userEncrypted` field
 4. **User retrieves connection details**:
-   - Re-signs the same `decryptMessage` with their wallet
+   - Re-signs the same `publicSecret` with their wallet
    - Derives decryption key from signature
    - Decrypts `userEncrypted` to get hostname/port/username
 
@@ -150,10 +150,10 @@ When using the subscription system, connection details are encrypted into the NF
 
 The new contract uses this mint signature:
 ```solidity
-mint(address to, bytes userEncrypted, string decryptMessage,
+mint(address to, bytes userEncrypted, string publicSecret,
      string description, string imageUri, string animationUrlBase64, uint256 expiresAt)
 ```
 
 - `userEncrypted`: AES-256-GCM encrypted JSON (or `0x` if not using encryption)
-- `decryptMessage`: Format `libpam-web3:<checksumAddress>:<nonce>`
+- `publicSecret`: Format `libpam-web3:<checksumAddress>:<nonce>`
 - `animationUrlBase64`: Signing page HTML as base64 (not data URI)

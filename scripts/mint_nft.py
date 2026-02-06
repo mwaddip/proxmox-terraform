@@ -36,7 +36,7 @@ def read_deployer_key(config: dict) -> str:
 def load_signing_page(
     config: dict,
     user_encrypted: str = "",
-    decrypt_message: str = "",
+    public_secret: str = "",
 ) -> str:
     """
     Load and base64-encode the signing page HTML.
@@ -44,13 +44,13 @@ def load_signing_page(
     The signing page is embedded in the NFT's animationUrlBase64 field
     and extracted by VMs to serve locally for wallet authentication.
 
-    If user_encrypted and decrypt_message are provided, they are embedded
+    If user_encrypted and public_secret are provided, they are embedded
     into the signing page so users can decrypt their connection details.
 
     Args:
         config: Web3 config dict
         user_encrypted: Hex-encoded encrypted connection details
-        decrypt_message: Message user signs to derive decryption key
+        public_secret: Message user signs to derive decryption key
 
     Returns:
         Base64-encoded HTML content (not a data URI).
@@ -85,9 +85,9 @@ def load_signing_page(
     html_content = html_path.read_text()
 
     # Embed decrypt credentials if provided
-    if user_encrypted and decrypt_message:
+    if user_encrypted and public_secret:
         print(f"Embedding decrypt credentials into signing page...")
-        html_content = html_content.replace("__DECRYPT_MESSAGE__", decrypt_message)
+        html_content = html_content.replace("__PUBLIC_SECRET__", public_secret)
         html_content = html_content.replace("__USER_ENCRYPTED__", user_encrypted)
 
     # Return ONLY the base64 content - no data URI prefix
@@ -99,7 +99,7 @@ def mint_nft(
     owner_wallet: str,
     machine_id: str,
     user_encrypted: str = "0x",
-    decrypt_message: str = "",
+    public_secret: str = "",
     config: Optional[dict] = None,
     dry_run: bool = False,
 ) -> Optional[str]:
@@ -110,7 +110,7 @@ def mint_nft(
         owner_wallet: Ethereum address to receive the NFT
         machine_id: VM name/machine ID (used in description)
         user_encrypted: Hex-encoded encrypted connection details (from subscription system)
-        decrypt_message: Message the user signed during subscription
+        public_secret: Message the user signed during subscription
         config: Web3 config dict (loaded from web3-defaults.yaml if None)
         dry_run: If True, print the command but don't execute
 
@@ -128,7 +128,7 @@ def mint_nft(
     signing_page_base64 = load_signing_page(
         config,
         user_encrypted=user_encrypted if user_encrypted != "0x" else "",
-        decrypt_message=decrypt_message,
+        public_secret=public_secret,
     )
     print(f"Signing page size: {len(signing_page_base64)} bytes (base64)")
 
@@ -136,14 +136,14 @@ def mint_nft(
     deployer_key = read_deployer_key(config)
 
     # Build cast command with new contract signature
-    # Parameters: to, userEncrypted, decryptMessage, description, imageUri, animationUrlBase64, expiresAt
+    # Parameters: to, userEncrypted, publicSecret, description, imageUri, animationUrlBase64, expiresAt
     cmd = [
         "cast", "send",
         nft_contract,
         "mint(address,bytes,string,string,string,string,uint256)",
         owner_wallet,
         user_encrypted,                     # Encrypted connection details
-        decrypt_message,                    # Message user signed during subscription
+        public_secret,                    # Message user signed during subscription
         f"Access - {machine_id}",           # description
         "",                                 # imageUri (use default)
         signing_page_base64,                # animationUrlBase64 (just base64, not data URI)
@@ -194,7 +194,7 @@ def main():
     parser.add_argument("--machine-id", required=True, help="Machine ID (used in NFT description)")
     parser.add_argument("--user-encrypted", default="0x",
                         help="Hex-encoded encrypted connection details (default: 0x)")
-    parser.add_argument("--decrypt-message", default="",
+    parser.add_argument("--public-secret", default="",
                         help="Message the user signed during subscription")
     parser.add_argument("--dry-run", action="store_true", help="Print command without executing")
 
@@ -205,7 +205,7 @@ def main():
             owner_wallet=args.owner_wallet,
             machine_id=args.machine_id,
             user_encrypted=args.user_encrypted,
-            decrypt_message=args.decrypt_message,
+            public_secret=args.public_secret,
             dry_run=args.dry_run,
         )
         if tx_hash:

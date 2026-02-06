@@ -53,7 +53,7 @@ entry_points:
         description: Use mock database for testing
       - name: --user-signature
         description: User's decrypted signature from subscription system (hex)
-      - name: --decrypt-message
+      - name: --public-secret
         description: Message the user signed during subscription
       - name: --skip-mint
         type: flag
@@ -163,14 +163,14 @@ entry_points:
     optional_args:
       - name: --user-encrypted
         description: Hex-encoded encrypted connection details (default 0x)
-      - name: --decrypt-message
+      - name: --public-secret
         description: Message the user signed during subscription
       - name: --dry-run
         type: flag
         description: Print command without executing
     example: |
       python3 scripts/mint_nft.py --owner-wallet 0x1234... --machine-id web-001 \
-        --user-encrypted 0xabc... --decrypt-message "libpam-web3:0x1234...:12345"
+        --user-encrypted 0xabc... --public-secret "libpam-web3:0x1234...:12345"
 
   build_template:
     script: scripts/build-template.sh
@@ -201,14 +201,14 @@ python_api:
     module: scripts/mint_nft.py
     functions:
       - name: mint_nft
-        signature: mint_nft(owner_wallet, machine_id, user_encrypted="0x", decrypt_message="", config=None, dry_run=False) -> Optional[str]
+        signature: mint_nft(owner_wallet, machine_id, user_encrypted="0x", public_secret="", config=None, dry_run=False) -> Optional[str]
         description: Mint access NFT with embedded signing page, returns transaction hash
         requires:
           - Foundry (cast CLI)
           - Deployer private key with funds
           - Signing page HTML (from libpam-web3-tools)
       - name: load_signing_page
-        signature: load_signing_page(config, user_encrypted="", decrypt_message="") -> str
+        signature: load_signing_page(config, user_encrypted="", public_secret="") -> str
         description: Load signing page HTML, embed decrypt credentials if provided, return as base64
 
 # Configuration and database modules are provided by blockhost-common
