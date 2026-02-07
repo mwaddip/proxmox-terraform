@@ -128,17 +128,24 @@ python3 scripts/vm-generator.py web-001 --owner-wallet 0x1234... --mock --skip-m
 
 ### `scripts/vm-gc.py`
 
-Garbage collects expired VMs. Designed for cron:
+Two-phase garbage collection for expired VMs:
+- **Phase 1 (Suspend)**: Shuts down expired VMs, preserves disk data
+- **Phase 2 (Destroy)**: Destroys suspended VMs past grace period, removes IPv6 host routes
+
+Runs automatically via systemd timer (daily at 2 AM):
 
 ```bash
 # Dry run - list expired VMs
-python3 scripts/vm-gc.py --grace-days 3
+python3 scripts/vm-gc.py
 
-# Actually destroy expired VMs
-python3 scripts/vm-gc.py --execute --grace-days 3
+# Execute both phases
+python3 scripts/vm-gc.py --execute
 
-# Cron (daily at 2 AM)
-0 2 * * * cd /path/to/blockhost-provisioner && python3 scripts/vm-gc.py --execute --grace-days 3 >> logs/gc.log 2>&1
+# Only suspend expired VMs
+python3 scripts/vm-gc.py --execute --suspend-only
+
+# Check timer status
+systemctl status blockhost-gc.timer
 ```
 
 ### `scripts/mint_nft.py`
