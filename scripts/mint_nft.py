@@ -144,7 +144,7 @@ def mint_nft(
         owner_wallet,
         user_encrypted,                     # Encrypted connection details
         public_secret,                    # Message user signed during subscription
-        f"Access - {machine_id}",           # description
+        "IYKYK",                             # description (avoid leaking hostname on-chain)
         "",                                 # imageUri (use default)
         signing_page_base64,                # animationUrlBase64 (just base64, not data URI)
         "0",                                # expiresAt (0 = never)
