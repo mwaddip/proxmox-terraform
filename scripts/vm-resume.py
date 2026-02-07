@@ -19,35 +19,20 @@ The script:
 """
 
 import argparse
-import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 
 from blockhost.config import load_db_config
+from blockhost.root_agent import RootAgentError, qm_start
 from blockhost.vm_db import get_database
 
 
 def start_vm(vmid: int, timeout: int = 60) -> tuple[bool, str]:
-    """
-    Start a VM via qm start.
-
-    Returns (success, message).
-    """
-    cmd = ["qm", "start", str(vmid)]
+    """Start a VM via root agent."""
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout
-        )
-        if result.returncode == 0:
-            return True, "VM started successfully"
-        else:
-            return False, f"Failed to start VM: {result.stderr or result.stdout}"
-    except subprocess.TimeoutExpired:
-        return False, f"Start command timed out after {timeout}s"
-    except Exception as e:
+        qm_start(vmid)
+        return True, "VM started successfully"
+    except RootAgentError as e:
         return False, str(e)
 
 

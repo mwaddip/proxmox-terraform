@@ -39,6 +39,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from blockhost.config import get_terraform_dir, load_db_config
+from blockhost.root_agent import (
+    RootAgentError,
+    ip6_route_del,
+    qm_destroy,
+    qm_shutdown,
+    qm_stop,
+)
 from blockhost.vm_db import get_database
 
 
@@ -53,23 +60,18 @@ def get_tf_file_path(name: str) -> Path:
 
 
 def run_qm_command(vmid: int, command: str, timeout: int = 60) -> tuple[bool, str]:
-    """
-    Run a qm command on a VM.
-
-    Returns (success, output).
-    """
-    cmd = ["qm", command, str(vmid)]
+    """Run a qm command on a VM via root agent."""
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout
-        )
-        return result.returncode == 0, result.stdout + result.stderr
-    except subprocess.TimeoutExpired:
-        return False, f"Command timed out after {timeout}s"
-    except Exception as e:
+        if command == "shutdown":
+            result = qm_shutdown(vmid)
+        elif command == "stop":
+            result = qm_stop(vmid)
+        elif command == "destroy":
+            result = qm_destroy(vmid)
+        else:
+            return False, f"Unknown command: {command}"
+        return True, result.get("output", "")
+    except RootAgentError as e:
         return False, str(e)
 
 
@@ -294,13 +296,11 @@ def phase_destroy(db, grace_days: int, execute: bool, verbose: bool) -> tuple[in
                         print(f"    Successfully destroyed")
                         # Remove IPv6 host route if VM had an IPv6 address
                         if vm.get("ipv6_address"):
-                            route_result = subprocess.run(
-                                ["ip", "-6", "route", "del", f"{vm['ipv6_address']}/128", "dev", "vmbr0"],
-                                capture_output=True, text=True
-                            )
-                            if route_result.returncode == 0:
+                            try:
+                                ip6_route_del(f"{vm['ipv6_address']}/128", "vmbr0")
                                 print(f"    Removed IPv6 host route: {vm['ipv6_address']}/128")
-                            # Silently ignore if route doesn't exist
+                            except RootAgentError:
+                                pass  # Silently ignore if route doesn't exist
                         success_count += 1
                     except Exception as e:
                         print(f"    Error updating database: {e}")

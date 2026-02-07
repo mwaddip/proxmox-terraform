@@ -9,7 +9,7 @@
 This is the Proxmox VM provisioning component of the Blockhost system, providing NFT-based web3 authentication. Read `PROJECT.yaml` for the complete machine-readable API specification.
 
 **Dependencies:**
-- `blockhost-common` - Provides `blockhost.config` and `blockhost.vm_db` modules
+- `blockhost-common` - Provides `blockhost.config`, `blockhost.vm_db`, and `blockhost.root_agent` modules
 - `blockhost-broker` - IPv6 tunnel broker (broker-client saves allocation to `/etc/blockhost/broker-allocation.json`)
 - `libpam-web3-tools` - Provides signing page HTML and `pam_web3_tool` CLI
 
@@ -84,6 +84,7 @@ If yes to any, update `PROJECT.yaml` accordingly.
 |-------------|---------|
 | `blockhost.config` | Config loading (load_db_config, load_web3_config, get_terraform_dir) |
 | `blockhost.vm_db` | Database abstraction (VMDatabase, MockVMDatabase, get_database) |
+| `blockhost.root_agent` | Root agent client (qm_start/stop/shutdown/destroy, ip6_route_add/del) |
 | `/etc/blockhost/db.yaml` | Database and terraform_dir config |
 | `/etc/blockhost/web3-defaults.yaml` | Blockchain/NFT settings |
 
@@ -127,6 +128,16 @@ NFT token IDs are sequential and tracked in the database:
 - `mark_nft_failed()` - Called if VM creation fails
 
 **Never reuse failed token IDs** - they create gaps in the sequence but prevent on-chain conflicts.
+
+## Pre-Push Documentation Check
+
+**Before creating a commit or pushing to GitHub**, you MUST:
+
+1. **Re-read `PROJECT.yaml`** and verify it reflects all changes made in this session
+2. **Re-read `CLAUDE.md`** and verify the Quick Reference, Key Files table, and other sections are still accurate
+3. **Fix any stale documentation** before committing — do not push code that contradicts the docs
+
+This applies to every commit, not just large changes. Small changes (renamed flags, new imports, changed defaults) can silently make docs wrong.
 
 ## Subscription System Workflow
 

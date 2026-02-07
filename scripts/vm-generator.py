@@ -32,6 +32,7 @@ from blockhost.config import (
     load_db_config,
     load_web3_config,
 )
+from blockhost.root_agent import RootAgentError, ip6_route_add
 from blockhost.vm_db import get_database
 
 from blockhost.mint_nft import mint_nft
@@ -572,14 +573,11 @@ Examples:
 
         # Add IPv6 host route so inbound traffic from wg-broker reaches the VM via vmbr0
         if ipv6_address:
-            route_result = subprocess.run(
-                ["ip", "-6", "route", "replace", f"{ipv6_address}/128", "dev", "vmbr0"],
-                capture_output=True, text=True
-            )
-            if route_result.returncode == 0:
+            try:
+                ip6_route_add(f"{ipv6_address}/128", "vmbr0")
                 print(f"  IPv6 host route: {ipv6_address}/128 via vmbr0")
-            else:
-                print(f"  Warning: Failed to add IPv6 host route: {route_result.stderr.strip()}")
+            except RootAgentError as e:
+                print(f"  Warning: Failed to add IPv6 host route: {e}")
 
         # Mint NFT after successful VM creation
         if web3_enabled and nft_token_id is not None and not args.skip_mint:

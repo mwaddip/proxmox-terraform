@@ -220,6 +220,7 @@ external_modules:
     provides:
       - blockhost.config: Path constants, config loading (load_db_config, load_web3_config, get_terraform_dir, load_broker_allocation)
       - blockhost.vm_db: Database classes (VMDatabase, MockVMDatabase, get_database) with allocate_ip and allocate_ipv6
+      - blockhost.root_agent: Root agent client (qm_start, qm_stop, qm_shutdown, qm_destroy, ip6_route_add, ip6_route_del, RootAgentError)
     config_files:
       - /etc/blockhost/db.yaml
       - /etc/blockhost/web3-defaults.yaml
@@ -278,7 +279,7 @@ cloud_init_templates:
 # External dependencies
 dependencies:
   packages:
-    - blockhost-common: Config and database modules (including IPv6 allocation)
+    - blockhost-common: Config, database, and root agent modules (including IPv6 allocation)
     - blockhost-broker: IPv6 tunnel broker (broker-client creates /etc/blockhost/broker-allocation.json)
     - libpam-web3-tools: Signing page HTML, pam_web3_tool CLI
   system:
@@ -313,6 +314,28 @@ integration:
     location: Configured via terraform_dir in /etc/blockhost/db.yaml
     note: Generated .tf.json files are written to terraform_dir
 
+# Privilege separation
+privilege_separation:
+  description: |
+    Scripts run as the unprivileged 'blockhost' user. Privileged operations
+    (qm commands, ip route management) are delegated to a root agent daemon
+    via blockhost.root_agent client functions. Terraform runs directly as
+    blockhost user (HTTP API auth, working dir owned by blockhost).
+  unprivileged_user: blockhost
+  root_agent_operations:
+    - qm_start: Start a VM
+    - qm_stop: Force-stop a VM
+    - qm_shutdown: Gracefully shut down a VM
+    - qm_destroy: Destroy a VM
+    - ip6_route_add: Add IPv6 host route
+    - ip6_route_del: Remove IPv6 host route
+  direct_as_blockhost:
+    - terraform: HTTP API auth, terraform_dir owned by blockhost
+    - cast: Reads deployer key via group perm 0640
+    - pam_web3_tool: encrypt-symmetric for connection details
+  exceptions:
+    - build-template.sh: Runs during installer finalization when process IS root
+
 # VM Status Lifecycle
 vm_lifecycle:
   statuses:
@@ -343,7 +366,7 @@ workflow:
       - 6: Render cloud-init template with variables (including SIGNING_HOST for IPv6 or IPv4)
       - 7: Generate .tf.json config (with dual-stack IPv4/IPv6, datastore_id, ipv6_gateway)
       - 8: Run terraform apply (if --apply)
-      - 9: Add IPv6 host route (ip -6 route replace <ipv6>/128 dev vmbr0)
+      - 9: Add IPv6 host route via root agent (ip6_route_add <ipv6>/128 vmbr0)
       - 10: If --user-signature provided, encrypt connection details (pam_web3_tool encrypt-symmetric)
       - 11: Mint NFT to owner wallet (if successful and not --skip-mint)
       - 12: Mark NFT as minted in database
@@ -355,6 +378,7 @@ workflow:
       - reserve_nft_token_id(vm_name, token_id=None): Accept specific token ID
       - register_vm(..., ipv6=None): Store IPv6 address in VM record
       - VM records must include ipv6_address field for route cleanup
+      - blockhost.root_agent: Client for privileged operations (qm_*, ip6_route_*)
     ipv6_notes:
       description: |
         IPv6 addresses are allocated from the broker pool (/etc/blockhost/broker-allocation.json).
@@ -365,9 +389,9 @@ workflow:
         IPv6 gateway is computed as the first host address in the /120 prefix (offset +1).
         This is where the Proxmox host has its address on vmbr0.
       routing: |
-        After VM creation, a /128 host route is added to direct inbound traffic via vmbr0:
-          ip -6 route replace <ipv6>/128 dev vmbr0
-        This route is removed when the VM is destroyed via vm-gc.py.
+        After VM creation, a /128 host route is added via root agent (ip6_route_add)
+        to direct inbound traffic via vmbr0. This route is removed when the VM is
+        destroyed via vm-gc.py (ip6_route_del).
     encryption_workflow:
       description: |
         When --user-signature is provided, connection details are encrypted into the NFT.
