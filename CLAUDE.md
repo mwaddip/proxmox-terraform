@@ -1,5 +1,18 @@
 # Claude Instructions for blockhost-provisioner
 
+## SPECIAL.md (HIGHEST PRIORITY)
+
+**Read and internalize `SPECIAL.md` at the start of every session.** It defines per-component priority weights — where to invest extra scrutiny beyond standard professional practice. All stats at 5 = normal competence. Stats above 5 = extra focus.
+
+| Path pattern | Profile | Extra focus areas |
+|---|---|---|
+| `scripts/vm-gc.py` | S8 P6 E9 C4 I6 A5 L8 | Robustness (destroys resources), reliability (must be idempotent), edge cases (cleanup failures = data loss) |
+| `scripts/mint_nft.py` | S7 P8 E7 C4 I6 A6 L7 | Security (permanent chain writes, key handling) |
+| `scripts/build-template.sh` | S7 P6 E8 C4 I5 A5 L6 | Reliability (must be idempotent, runs once) |
+| everything else | S9 P7 E9 C5 I7 A6 L7 | Robustness + reliability (VM lifecycle is unforgiving) |
+
+See `SPECIAL.md` for full stat definitions and the priority allocation model.
+
 ## Project Scope
 
 **This Claude session only modifies blockhost-provisioner.** Changes to dependency packages (blockhost-common, blockhost-broker, libpam-web3-tools) should be done in their respective Claude sessions with separate prompts.
